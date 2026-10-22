@@ -1,0 +1,23 @@
+# Keil build products and per-user state
+**/Objects/
+**/Listings/
+*.uvguix.*
+*.uvoptx
+*.o
+*.d
+*.crf
+*.axf
+*.hex
+*.bin
+*.map
+*.lst
+*.lnp
+*.sct
+*.htm
+*.build_log.txt
+# Local credentials (later stages)
+**/wifi_private.h
+**/bemfa_private.h
+.env
+.env.*
+!.env.example
