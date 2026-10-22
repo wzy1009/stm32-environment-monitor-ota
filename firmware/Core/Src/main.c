@@ -1,40 +1,88 @@
 #include "main.h"
 #include "oled.h"
+#include "board_io.h"
+#include "dht11.h"
+#include "monitor_state.h"
+#include <stdio.h>
+#include <string.h>
 
-static void BoardLed_Init(void)
+static uint8_t display_frame[1024];
+
+static void RenderStatus(const MonitorState *state, uint32_t now)
 {
-    GPIO_InitTypeDef gpio = {0};
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOE_CLK_ENABLE();
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_SET);
-    gpio.Pin = GPIO_PIN_5;
-    gpio.Mode = GPIO_MODE_OUTPUT_PP;
-    gpio.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOB, &gpio);
-    HAL_GPIO_Init(GPIOE, &gpio);
+    const Dht11Sample *sample = Dht11_GetSample();
+    static const char * const dht_text[] = {"DHT WAIT", "DHT OK", "DHT TIMEOUT", "DHT CHECKSUM", "DHT DATA ERROR"};
+    char line[32];
+    int temperature;
+    uint32_t elapsed;
+    memset(display_frame, 0, sizeof(display_frame));
+    Oled_DrawText(display_frame, 0U, 0U, "ENV MONITOR V0.2");
+    if (sample->valid != 0U) {
+        temperature = sample->temperature_x10;
+        (void)snprintf(line, sizeof(line), "TEMP %s%d.%d C", temperature < 0 ? "-" : "",
+                       (temperature < 0 ? -temperature : temperature) / 10,
+                       (temperature < 0 ? -temperature : temperature) % 10);
+        Oled_DrawText(display_frame, 0U, 1U, line);
+        (void)snprintf(line, sizeof(line), "HUM %u.%u RH", (unsigned)(sample->humidity_x10 / 10U),
+                       (unsigned)(sample->humidity_x10 % 10U));
+        Oled_DrawText(display_frame, 0U, 2U, line);
+    } else {
+        Oled_DrawText(display_frame, 0U, 1U, "TEMP --.- C");
+        Oled_DrawText(display_frame, 0U, 2U, "HUM --.- RH");
+    }
+    Oled_DrawText(display_frame, 0U, 3U, dht_text[Dht11_GetStatus()]);
+    if (state->ready == 0U) {
+        elapsed = (uint32_t)(now - state->started_at);
+        (void)snprintf(line, sizeof(line), "PIR WARMUP %luS",
+                       (unsigned long)(elapsed >= MONITOR_PIR_WARMUP_MS ? 0U :
+                       (MONITOR_PIR_WARMUP_MS - elapsed + 999U) / 1000U));
+        Oled_DrawText(display_frame, 0U, 4U, line);
+    } else {
+        Oled_DrawText(display_frame, 0U, 4U, state->motion != 0U ? "PIR MOTION" : "PIR CLEAR");
+    }
+    Oled_DrawText(display_frame, 0U, 5U, state->armed == 0U ? "MODE DISARMED" :
+                  Monitor_IsArming(state, now) != 0U ? "MODE ARMING" : "MODE ARMED");
+    Oled_DrawText(display_frame, 0U, 6U, state->alarm != 0U ? "ALARM ON" : "ALARM OFF");
+    Oled_DrawText(display_frame, 0U, 7U, "K0 TOGGLE K1 OFF");
 }
 
 void SystemClock_Config(void);
 
 int main(void)
 {
+    MonitorState monitor;
+    uint32_t now;
+    uint32_t display_tick = 0U;
+    uint32_t display_retry;
+    uint8_t display_ok = 0U;
     HAL_Init();
     SystemClock_Config();
-    BoardLed_Init();
-    if (Oled_Init() == HAL_OK) {
-        if (Oled_ShowText(0U, "ENV MONITOR") != HAL_OK ||
-            Oled_ShowText(2U, "STAGE 1 READY") != HAL_OK ||
-            Oled_ShowText(4U, "STM32F103ZET6") != HAL_OK) {
-            HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_RESET);
-        }
-    } else {
-        /* LED1 stays on when the display is absent or fails initialization. */
-        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_RESET);
-    }
+    BoardIo_Init();
+    now = HAL_GetTick();
+    Monitor_Init(&monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
+    Dht11_Init(now);
+    display_retry = now - 2000U;
     while (1) {
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5);
-        HAL_Delay(500U);
+        now = HAL_GetTick();
+        Monitor_Update(&monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
+        Dht11_Task(now);
+        now = HAL_GetTick();
+        BoardIo_SetOutputs(now, monitor.alarm, display_ok == 0U);
+        /* Keep OLED work out of the DHT11 start/receive window. */
+        if (Dht11_IsBusy() != 0U) continue;
+        if (display_ok == 0U && (uint32_t)(now - display_retry) >= 2000U) {
+            display_retry = now;
+            display_ok = Oled_Init() == HAL_OK;
+            if (display_ok != 0U) display_tick = now - 250U;
+        }
+        if (display_ok != 0U) {
+            if (Oled_IsFlushing() == 0U && (uint32_t)(now - display_tick) >= 250U) {
+                display_tick = now;
+                RenderStatus(&monitor, now);
+                if (Oled_BeginFrame(display_frame) != HAL_OK) display_ok = 0U;
+            }
+            if (Oled_FlushStep() != HAL_OK) display_ok = 0U;
+        }
     }
 }
 

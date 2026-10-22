@@ -15,6 +15,7 @@
 *.sct
 *.htm
 *.build_log.txt
+*.exe
 # Local credentials (later stages)
 **/wifi_private.h
 **/bemfa_private.h

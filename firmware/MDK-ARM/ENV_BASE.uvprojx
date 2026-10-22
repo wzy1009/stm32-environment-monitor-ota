@@ -46,7 +46,7 @@
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
           <OutputDirectory>.\Objects\</OutputDirectory>
-          <OutputName>ENV_BASE</OutputName>
+          <OutputName>ENV_LOCAL</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>1</CreateHexFile>
@@ -401,6 +401,21 @@
               <FileName>system_stm32f1xx.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Core/Src/system_stm32f1xx.c</FilePath>
+            </File>
+            <File>
+              <FileName>board_io.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/board_io.c</FilePath>
+            </File>
+            <File>
+              <FileName>dht11.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/dht11.c</FilePath>
+            </File>
+            <File>
+              <FileName>monitor_state.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/monitor_state.c</FilePath>
             </File>
           </Files>
         </Group>
