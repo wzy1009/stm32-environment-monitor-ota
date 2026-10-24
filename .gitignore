@@ -16,9 +16,10 @@
 *.htm
 *.build_log.txt
 *.exe
-# Local credentials (later stages)
+# Local credentials
 **/wifi_private.h
 **/bemfa_private.h
 .env
 .env.*
 !.env.example
+**/cloud_private.h

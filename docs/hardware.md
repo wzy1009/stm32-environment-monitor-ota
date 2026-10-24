@@ -15,7 +15,7 @@
 | OLED VCC / GND | P1-24 / P1-22 | 3.3 V / GND |
 | SWD | PA13 / PA14 | 调试下载 |
 | USART1 | PA9 TX / PA10 RX | 下载接口，本版无串口业务 |
-| ESP8266 | PB10 TX / PB11 RX | 预留 |
+| ESP8266 | USART3，PB10 TX / PB11 RX | 115200、8N1；接板载 P2 时，P7 跳线接 3–5、4–6 |
 | SPI Flash | PB12 CS、PB13 SCK、PB14 MISO、PB15 MOSI | 预留 |
 | AT24C02 | PB6 SCL、PB7 SDA | 预留 |
 
@@ -24,3 +24,5 @@ P13 是四脚 DHT11/DS18B20 共用接口。三脚 DHT11 模块按 VCC、DATA、G
 PG10 是本项目选用的扩展输入，确认该位置没有连接其他模块。板载 HS0038 是遥控接收器，不能替代 SR602，不要将 SR602 与其 PB9 输出并接。
 
 引脚配置集中在 `firmware/Core/Src/board_io.c`。以上是原理图和代码配置核对结果，实物板版本与接线仍待确认。
+
+ESP8266 需使用兼容 `AT+CWMODE_CUR`、`AT+CWJAP_CUR`、`AT+CIPSTART` 的 AT 固件，工作在单连接、非透传、主动 `+IPD` 接收模式。连接外置模块时 TX/RX 交叉并共地；使用 3.3 V 逻辑和供电稳定的模块电源。

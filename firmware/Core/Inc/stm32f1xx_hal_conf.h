@@ -65,7 +65,7 @@
 /* HAL_SPI_MODULE_ENABLED disabled in foundation */
 /*#define HAL_SRAM_MODULE_ENABLED   */
 /*#define HAL_TIM_MODULE_ENABLED   */
-/* HAL_UART_MODULE_ENABLED disabled in foundation */
+#define HAL_UART_MODULE_ENABLED
 /*#define HAL_USART_MODULE_ENABLED   */
 /*#define HAL_WWDG_MODULE_ENABLED   */
 

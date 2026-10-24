@@ -3,6 +3,8 @@
 #include "board_io.h"
 #include "dht11.h"
 #include "monitor_state.h"
+#include "cloud_task.h"
+#include "usart.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -16,7 +18,7 @@ static void RenderStatus(const MonitorState *state, uint32_t now)
     int temperature;
     uint32_t elapsed;
     memset(display_frame, 0, sizeof(display_frame));
-    Oled_DrawText(display_frame, 0U, 0U, "ENV MONITOR V0.2");
+    Oled_DrawText(display_frame, 0U, 0U, "ENV MONITOR V0.3");
     if (sample->valid != 0U) {
         temperature = sample->temperature_x10;
         (void)snprintf(line, sizeof(line), "TEMP %s%d.%d C", temperature < 0 ? "-" : "",
@@ -43,7 +45,7 @@ static void RenderStatus(const MonitorState *state, uint32_t now)
     Oled_DrawText(display_frame, 0U, 5U, state->armed == 0U ? "MODE DISARMED" :
                   Monitor_IsArming(state, now) != 0U ? "MODE ARMING" : "MODE ARMED");
     Oled_DrawText(display_frame, 0U, 6U, state->alarm != 0U ? "ALARM ON" : "ALARM OFF");
-    Oled_DrawText(display_frame, 0U, 7U, "K0 TOGGLE K1 OFF");
+    Oled_DrawText(display_frame, 0U, 7U, Cloud_StatusText());
 }
 
 void SystemClock_Config(void);
@@ -58,14 +60,18 @@ int main(void)
     HAL_Init();
     SystemClock_Config();
     BoardIo_Init();
+    MX_USART3_UART_Init();
     now = HAL_GetTick();
     Monitor_Init(&monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
     Dht11_Init(now);
+    Cloud_Init(now);
     display_retry = now - 2000U;
     while (1) {
         now = HAL_GetTick();
         Monitor_Update(&monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
-        Dht11_Task(now);
+        Cloud_Task(now, &monitor, Dht11_GetSample(), Dht11_GetStatus(), Dht11_IsBusy() == 0U);
+        /* Network work may take time; start the DHT window using a fresh tick. */
+        Dht11_Task(HAL_GetTick());
         now = HAL_GetTick();
         BoardIo_SetOutputs(now, monitor.alarm, display_ok == 0U);
         /* Keep OLED work out of the DHT11 start/receive window. */

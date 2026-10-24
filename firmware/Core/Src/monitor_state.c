@@ -58,3 +58,15 @@ void Monitor_Update(MonitorState *state, uint32_t now, uint8_t key0, uint8_t key
         state->alarm = 1U;
     }
 }
+
+void Monitor_SetArmed(MonitorState *state, uint32_t now, uint8_t armed)
+{
+    /* Local emergency disarm remains authoritative over a remote ARM. */
+    if (state->key1.raw != 0U || state->key1.stable != 0U) armed = 0U;
+    armed = armed != 0U;
+    if (state->armed != armed) {
+        state->armed = armed;
+        state->armed_at = now;
+    }
+    if (armed == 0U) state->alarm = 0U;
+}

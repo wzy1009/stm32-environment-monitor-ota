@@ -1,6 +1,6 @@
 # 本地监测与报警
 
-当前固件 V0.2。代码已编译并通过本机测试，以下步骤待实板执行。
+当前固件 V0.3。本地监测代码已编译并通过本机测试，以下步骤待实板执行；云端配置另见 [云端接入](cloud.md)。
 
 ## 接线与烧录
 
@@ -8,7 +8,7 @@
 2. SR602：OUT→PG10（P10-22），GND→开发板 GND；确认模块支持 3.3 V 供电后再连接 VCC。
 3. OLED：SCL→PD9、SDA→PE15，电源 3.3 V，并共地。
 4. KEY0、KEY1、蜂鸣器和 LED 使用板载器件。
-5. 打开 `firmware/MDK-ARM/ENV_BASE.uvprojx`，选择 `ENV_BASE` 并 Rebuild，生成 `Objects/ENV_LOCAL.hex`。
+5. 打开 `firmware/MDK-ARM/ENV_BASE.uvprojx`，选择 `ENV_BASE` 并 Rebuild，生成 `Objects/ENV_CLOUD.hex`。
 
 程序从 `0x08000000` 运行，烧录会覆盖对应位置固件，先备份需要保留的内容。此 HEX 不能直接作为 OTA 升级包。
 
@@ -24,6 +24,7 @@
 | `PIR MOTION` / `PIR CLEAR` | 已过滤的活动输入状态 |
 | `MODE DISARMED` / `MODE ARMING` / `MODE ARMED` | 撤防 / 3 秒布防等待 / 已布防 |
 | `ALARM ON` | 报警保持，直到撤防 |
+| `NET CONFIG` / `NET OFFLINE` / `NET ONLINE` | 缺少或无效配置 / 连接中或掉线 / MQTT 订阅成功 |
 
 KEY0 单次按下切换布防/撤防，长按不重复；KEY1 优先撤防并清除报警，双键同按保持撤防。重启后默认撤防，不保存布防状态。
 

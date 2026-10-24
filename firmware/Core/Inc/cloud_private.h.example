@@ -1,0 +1,9 @@
+#ifndef CLOUD_PRIVATE_H
+#define CLOUD_PRIVATE_H
+/* Copy to cloud_private.h (ignored by Git), then fill in locally. */
+#define CLOUD_WIFI_SSID ""
+#define CLOUD_WIFI_PASSWORD ""
+#define CLOUD_BEMFA_UID ""
+#define CLOUD_STATE_TOPIC "envState"
+#define CLOUD_COMMAND_TOPIC "envCmd"
+#endif

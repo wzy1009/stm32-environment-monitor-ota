@@ -29,6 +29,7 @@ typedef struct {
 
 void Monitor_Init(MonitorState *state, uint32_t now, uint8_t key0, uint8_t key1, uint8_t motion);
 void Monitor_Update(MonitorState *state, uint32_t now, uint8_t key0, uint8_t key1, uint8_t motion);
+void Monitor_SetArmed(MonitorState *state, uint32_t now, uint8_t armed);
 uint8_t Monitor_IsArming(const MonitorState *state, uint32_t now);
 
 #endif
