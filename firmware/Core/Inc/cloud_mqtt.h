@@ -2,15 +2,15 @@
 #define CLOUD_MQTT_H
 #include <stdint.h>
 
-#define MQTT_PACKET_CAPACITY 448U
+#define MQTT_PACKET_CAPACITY 384U
 typedef enum {
     MQTT_NONE, MQTT_CONNACK, MQTT_SUBACK, MQTT_PINGRESP,
-    MQTT_ARM, MQTT_DISARM, MQTT_STATUS, MQTT_OTA, MQTT_FAULT
+    MQTT_ARM, MQTT_DISARM, MQTT_STATUS, MQTT_FAULT
 } MqttEvent;
 typedef struct {
     uint8_t data[MQTT_PACKET_CAPACITY];
     const char *topic;
-    uint16_t remaining, used, payload_offset, payload_length;
+    uint16_t remaining, used;
     uint8_t header, length_bytes, receiving, fault;
 } MqttParser;
 

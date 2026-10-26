@@ -23,12 +23,3 @@
 .env.*
 !.env.example
 **/cloud_private.h
-
-!bootloader/MDK-ARM/boot_layout.sct
-**/OTA_BOOT/
-__pycache__/
-
-/build/
-/ota-tests-*/
-**/DebugConfig/
-firmware/MDK-ARM/RTE/_ENV_OTA/
