@@ -21,7 +21,7 @@ void OtaApp_Checkpoint(void)
     if (active_monitor != NULL) {
         uint32_t now = HAL_GetTick();
         Monitor_Update(active_monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
-        BoardIo_SetOutputs(now, active_monitor->alarm, 0U);
+        BoardIo_SetOutputs(now, active_monitor->motion, active_monitor->alarm);
     }
 }
 
@@ -104,7 +104,7 @@ int main(void)
         /* Network work may take time; start the DHT window using a fresh tick. */
         Dht11_Task(HAL_GetTick());
         now = HAL_GetTick();
-        BoardIo_SetOutputs(now, monitor.alarm, display_ok == 0U);
+        BoardIo_SetOutputs(now, monitor.motion, monitor.alarm);
         /* Keep OLED work out of the DHT11 start/receive window. */
         if (Dht11_IsBusy() != 0U) continue;
         if (display_ok == 0U && (uint32_t)(now - display_retry) >= 2000U) {

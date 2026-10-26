@@ -53,12 +53,11 @@ uint8_t BoardIo_DhtLevel(void) { return (GPIOG->IDR & DHT_PIN) != 0U; }
 uint32_t BoardIo_Cycles(void) { return DWT->CYCCNT; }
 uint32_t BoardIo_CyclesPerUs(void) { return HAL_RCC_GetHCLKFreq() / 1000000U; }
 
-void BoardIo_SetOutputs(uint32_t now, uint8_t alarm, uint8_t display_error)
+void BoardIo_SetOutputs(uint32_t now, uint8_t motion, uint8_t alarm)
 {
-    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5,
-                     ((now / 500U) & 1U) != 0U ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5,
-                     (alarm != 0U || display_error != 0U) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    /* LED0 red and LED1 green are active-low on the F103 board layout. */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, motion != 0U ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, motion != 0U ? GPIO_PIN_SET : GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOB, BEEP_PIN,
                      (alarm != 0U && ((now / 200U) & 1U) == 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
