@@ -128,7 +128,7 @@ static uint8_t reject_join, reject_subscription;
 static uint8_t boot_noise;
 static uint8_t active_rx, plain_ipd;
 static uint32_t reset_started;
-static char last_json[384], last_command[128];
+static char last_message[384], last_command[128];
 static MonitorState monitor;
 static Dht11Sample sample = {254, 602U, 1U};
 static uint32_t now;
@@ -196,8 +196,8 @@ HAL_StatusTypeDef EspAt_SendBytes(const uint8_t *b, uint16_t n)
         uint16_t topic = (uint16_t)((uint16_t)b[prefix] * 256U + b[prefix + 1U]);
         uint16_t start = prefix + topic + 2U;
         assert(topic == 11U && memcmp(b + prefix + 2U, "envState/up", 11U) == 0);
-        assert(start <= n && n - start < sizeof(last_json));
-        memcpy(last_json, b + start, n - start); last_json[n - start] = '\0'; ++publishes;
+        assert(start <= n && n - start < sizeof(last_message));
+        memcpy(last_message, b + start, n - start); last_message[n - start] = '\0'; ++publishes;
     } else { assert(b[0] == 0xC0U && n == 2U); ++pings; if (allow_pong) Inject(pong, sizeof(pong)); }
     return HAL_OK;
 }
@@ -242,7 +242,7 @@ static void TestCloudLifecycle(void)
     strcpy(test_command_topic, "envCmd");
     Cloud_Init(now); Online();
     assert(connects == 1U && subscriptions == 1U && monitor.armed == 0U && publishes == 1U);
-    assert(strstr(last_json, "\"temp_x10\":254") && strstr(last_json, "\"humi_x10\":602"));
+    assert(strstr(last_message, "温度:25.4℃") && strstr(last_message, "湿度:60.2%RH"));
     Command("envCmd", "ARM", 1U); Command("wrong", "ARM", 0U); Settle();
     assert(monitor.armed == 0U);
     before = sends;
@@ -257,13 +257,13 @@ static void TestCloudLifecycle(void)
     Tick(0U); assert(monitor.alarm == 1U);
     Command("envCmd", "ARM", 0U); Tick(0U); assert(monitor.alarm == 1U);
     now += 1200U; Settle();
-    assert(strstr(last_json, "\"alarm\":1") && strstr(last_json, "\"alarm_count\":1"));
+    assert(strstr(last_message, "报警:是") && strstr(last_message, "报警次数:1"));
     Command("envCmd", "DISARM", 0U); Command("envCmd", "ARM", 0U); Tick(0U);
     assert(monitor.armed == 0U && monitor.alarm == 0U);
     key1 = 1U; Command("envCmd", "ARM", 0U); Tick(0U); assert(!monitor.armed);
     key1 = 0U; Settle();
     sample.valid = 0U; now += 1200U; Settle();
-    assert(strstr(last_json, "\"temp_x10\":null") && strstr(last_json, "\"valid\":0"));
+    assert(strstr(last_message, "温度:无效") && strstr(last_message, "湿度:无效"));
     before = publishes; Command("envCmd", "STATUS", 0U); now += 1200U; Settle();
     assert(publishes > before);
     before = publishes; now += 10000U; Settle(); assert(publishes > before);
@@ -272,7 +272,7 @@ static void TestCloudLifecycle(void)
     now += 10000U; Tick(1U); assert(!Cloud_IsOnline());
     allow_pong = 1U; Online();
     assert(connects == 2U && subscriptions == 2U);
-    assert(strstr(last_json, "\"alarm_count\":1"));
+    assert(strstr(last_message, "报警次数:1"));
     Command("envCmd", "ARM", 0U); Tick(0U); assert(monitor.armed);
     reset_count = resets;
     response = ESP_AT_RESPONSE_CLOSED; Tick(1U);

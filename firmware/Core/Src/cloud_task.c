@@ -1,4 +1,4 @@
-#include "cloud_task.h"
+﻿#include "cloud_task.h"
 #include "cloud_config.h"
 #include "cloud_mqtt.h"
 #include "esp_at.h"
@@ -34,7 +34,7 @@ static EspAt_Stats rx_stats;
 static uint8_t packet[MQTT_PACKET_CAPACITY];
 static uint16_t packet_length;
 static uint32_t since, wait_ms, retry_ms, last_ping, last_report, generation, tx_generation;
-static uint32_t alarm_count, last_alarm_ms, partial_since;
+static uint32_t alarm_count, partial_since;
 static const char *last_failure = "NET OFFLINE";
 static uint8_t step, online, connack, suback, pong, fault, pending_command, dirty, partial;
 
@@ -149,7 +149,7 @@ void Cloud_Init(uint32_t now)
     phase = DISABLED;
     online = connack = suback = pong = fault = pending_command = partial = 0U;
     dirty = 1U;
-    generation = alarm_count = last_alarm_ms = 0U;
+    generation = alarm_count = 0U;
     retry_ms = 2000U;
     Mqtt_Init(&parser, CLOUD_COMMAND_TOPIC);
     if (ConfigValid() == 0U) return;
@@ -192,7 +192,6 @@ static void Observe(const MonitorState *state, const Dht11Sample *sample, Dht11S
     next.alarm = state->alarm;
     if (state->alarm != 0U && snapshot.alarm == 0U) {
         ++alarm_count;
-        last_alarm_ms = now;
     }
     if (memcmp(&next, &snapshot, sizeof(next)) != 0) {
         snapshot = next;
@@ -201,28 +200,44 @@ static void Observe(const MonitorState *state, const Dht11Sample *sample, Dht11S
     }
 }
 
+static const char *DhtText(uint8_t status)
+{
+    static const char * const text[] = {"等待", "正常", "读取超时", "校验失败", "数据异常"};
+    return status < sizeof(text) / sizeof(text[0]) ? text[status] : "未知";
+}
+
+static const char *OtaText(OtaProgressStage stage)
+{
+    static const char * const text[] = {"空闲", "准备", "擦除", "下载", "校验", "提交", "失败"};
+    return (unsigned)stage < sizeof(text) / sizeof(text[0]) ? text[stage] : "未知";
+}
+
 static void Report(uint32_t now)
 {
-    char json[320], topic[48], temperature[16], humidity[16];
+    char message[256], topic[48], temperature[16], humidity[16];
     OtaDownloadProgress ota;
+    int value, magnitude;
     int n;
     OtaDownload_GetProgress(&ota);
     if (snapshot.valid != 0U) {
-        (void)snprintf(temperature, sizeof(temperature), "%d", (int)snapshot.temperature);
-        (void)snprintf(humidity, sizeof(humidity), "%u", (unsigned)snapshot.humidity);
+        value = (int)snapshot.temperature;
+        magnitude = value < 0 ? -value : value;
+        (void)snprintf(temperature, sizeof(temperature), "%s%d.%d", value < 0 ? "-" : "",
+                       magnitude / 10, magnitude % 10);
+        (void)snprintf(humidity, sizeof(humidity), "%u.%u", (unsigned)(snapshot.humidity / 10U),
+                       (unsigned)(snapshot.humidity % 10U));
     } else {
-        strcpy(temperature, "null"); strcpy(humidity, "null");
+        strcpy(temperature, "无效"); strcpy(humidity, "无效");
     }
-    n = snprintf(json, sizeof(json),
-        "{\"temp_x10\":%s,\"humi_x10\":%s,\"valid\":%u,\"dht\":%u,\"ready\":%u,"
-        "\"motion\":%u,\"armed\":%u,\"alarm\":%u,\"alarm_count\":%lu,\"last_alarm_ms\":%lu,\"uptime_s\":%lu,\"version\":\"" FIRMWARE_VERSION "\",\"ota\":%u}",
-        temperature, humidity, (unsigned)snapshot.valid, (unsigned)snapshot.dht,
-        (unsigned)snapshot.ready, (unsigned)snapshot.motion, (unsigned)snapshot.armed,
-        (unsigned)snapshot.alarm, (unsigned long)alarm_count, (unsigned long)last_alarm_ms,
-        (unsigned long)(now / 1000U), (unsigned)ota.stage);
-    if (n < 0 || (size_t)n >= sizeof(json)) { Fail(now, FailureText()); return; }
+    n = snprintf(message, sizeof(message),
+        "温度:%s℃ 湿度:%s%%RH DHT11:%s 监测:%s 人体活动:%s 布防:%s 报警:%s 报警次数:%lu 版本:" FIRMWARE_VERSION " OTA:%s 运行:%lus",
+        temperature, humidity, DhtText(snapshot.dht), snapshot.ready != 0U ? "就绪" : "未就绪",
+        snapshot.motion != 0U ? "检测到" : "未检测到", snapshot.armed != 0U ? "是" : "否",
+        snapshot.alarm != 0U ? "是" : "否", (unsigned long)alarm_count,
+        OtaText(ota.stage), (unsigned long)(now / 1000U));
+    if (n < 0 || (size_t)n >= sizeof(message)) { Fail(now, FailureText()); return; }
     (void)snprintf(topic, sizeof(topic), "%s/up", CLOUD_STATE_TOPIC);
-    packet_length = Mqtt_Publish(packet, sizeof(packet), topic, json);
+    packet_length = Mqtt_Publish(packet, sizeof(packet), topic, message);
     tx_generation = generation;
     /* Clear before transmission: a STATUS request received during SEND must survive. */
     dirty = 0U;
