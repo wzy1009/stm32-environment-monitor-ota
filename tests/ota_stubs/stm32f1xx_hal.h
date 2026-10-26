@@ -3,6 +3,10 @@
 #include <stdint.h>
 typedef enum {HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT} HAL_StatusTypeDef;
 typedef struct { unsigned unused; } UART_HandleTypeDef;
+#define HAL_UART_ERROR_PE 1U
+#define HAL_UART_ERROR_NE 2U
+#define HAL_UART_ERROR_FE 4U
+#define HAL_UART_ERROR_ORE 8U
 typedef struct { uint32_t TypeErase, PageAddress, NbPages; } FLASH_EraseInitTypeDef;
 #define FLASH_TYPEERASE_PAGES 0U
 #define FLASH_TYPEPROGRAM_HALFWORD 1U

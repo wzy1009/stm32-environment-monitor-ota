@@ -117,6 +117,8 @@ static uint16_t queued;
 static unsigned sends, publishes, connects, subscriptions, pings, resets;
 static uint8_t prompt, allow_prompt = 1U, allow_send_ok = 1U, allow_pong = 1U;
 static uint8_t reject_join, reject_subscription;
+static uint8_t boot_noise;
+static uint32_t reset_started;
 static char last_json[384], last_command[128];
 static MonitorState monitor;
 static Dht11Sample sample = {254, 602U, 1U};
@@ -155,7 +157,10 @@ HAL_StatusTypeDef EspAt_Send(const char *command)
     if (strncmp(command, "AT+CIPSEND=", 11U) == 0) { prompt = allow_prompt; }
     else {
         response = reject_join && strncmp(command, "AT+CWJAP_CUR=", 13U) == 0 ? ESP_AT_RESPONSE_ERROR : ESP_AT_RESPONSE_OK;
-        if (strcmp(command, "AT+RST\r\n") == 0) ++resets;
+        if (strcmp(command, "AT+RST\r\n") == 0) {
+            ++resets; reset_started = now;
+            if (boot_noise) { ++stats.uart_errors; stats.last_uart_error = HAL_UART_ERROR_FE; }
+        }
     }
     return HAL_OK;
 }
@@ -188,6 +193,9 @@ HAL_StatusTypeDef EspAt_SendBytes(const uint8_t *b, uint16_t n)
 void EspAt_Poll(void)
 {
     uint16_t n = queued < 64U ? queued : 64U, i;
+    if (boot_noise && strcmp(Cloud_StatusText(), "ESP START") == 0 && (uint32_t)(now - reset_started) < 1200U) {
+        ++stats.uart_errors; stats.last_uart_error = HAL_UART_ERROR_FE;
+    }
     if (receiver == NULL) return;
     for (i = 0U; i < n; ++i) receiver(queue[i]);
     memmove(queue, queue + n, queued - n); queued -= n;
@@ -294,6 +302,31 @@ static void CheckFailureDisplay(uint8_t join_failure, const char *expected)
     assert(strcmp(Cloud_StatusText(), expected) == 0 && !Cloud_IsOnline());
 }
 
+static void CheckBootNoise(void)
+{
+    unsigned before = resets;
+    static const uint32_t errors[] = {HAL_UART_ERROR_FE, HAL_UART_ERROR_NE, HAL_UART_ERROR_ORE};
+    static const char * const messages[] = {"ESP RX FRAME", "ESP RX NOISE", "ESP RX OVERRUN"};
+    unsigned i;
+    now = 0U; key1 = 0U; reject_join = reject_subscription = 0U; boot_noise = 1U;
+    Monitor_Init(&monitor, now, 0U, 0U, 0U);
+    Cloud_Init(now); Online();
+    assert(resets == before + 1U && stats.uart_errors != 0U);
+    boot_noise = 0U;
+    for (i = 0U; i < sizeof(errors) / sizeof(errors[0]); ++i) {
+        ++stats.uart_errors; stats.last_uart_error = errors[i]; Tick(1U);
+        assert(!Cloud_IsOnline() && strcmp(Cloud_StatusText(), messages[i]) == 0);
+        Online();
+    }
+    ++stats.rearm_failures; Tick(1U);
+    assert(!Cloud_IsOnline() && strcmp(Cloud_StatusText(), "ESP RX REARM") == 0);
+    Online();
+    ++stats.overflow; Tick(1U);
+    assert(!Cloud_IsOnline() && strcmp(Cloud_StatusText(), "ESP RX FULL") == 0);
+    puts("PASS: repeated reset-window UART errors do not prevent a clean AT/MQTT handshake");
+    puts("PASS: active-session framing/noise/overrun/rearm/overflow still abort the connection");
+}
+
 int main(void)
 {
     TestProtocolAndFraming();
@@ -301,5 +334,6 @@ int main(void)
     CheckFailureDisplay(1U, "WIFI JOIN FAIL");
     CheckFailureDisplay(0U, "MQTT SUB FAIL");
     puts("PASS: Wi-Fi join and MQTT subscription failures have distinct screen diagnostics");
+    CheckBootNoise();
     return 0;
 }

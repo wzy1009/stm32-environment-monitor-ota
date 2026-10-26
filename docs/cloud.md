@@ -78,7 +78,10 @@ OTA 下载独占 ESP8266，期间暂停 MQTT；失败且允许恢复时重连，
 | 屏幕提示 | 排查方向 |
 |---|---|
 | `NET CONFIG` | 联网配置缺失、无效，或编译时未启用本地配置 |
-| `ESP NO REPLY` / `ESP TX FAIL` / `ESP RX ERROR` | 模块供电、P7 跳线、115200 串口与收发 |
+| `ESP NO REPLY` / `ESP TX FAIL` | 模块供电、P7 跳线与 115200 串口收发 |
+| `ESP RX FRAME` / `ESP RX NOISE` / `ESP RX PARITY` | 正常 AT 通信阶段的帧、噪声或校验错误，核对波特率、信号和串口配置 |
+| `ESP RX OVERRUN` / `ESP RX FULL` | 硬件接收溢出 / 软件接收队列满 |
+| `ESP RX REARM` | HAL 中断接收重新启动失败 |
 | `ESP SETUP FAIL` | AT 固件是否支持当前配置指令 |
 | `WIFI JOIN FAIL` | 热点是否开启、名称密码、2.4 GHz 与信号 |
 | `SERVER FAIL` | 已进入服务器连接阶段，检查外网、DNS、端口可达性 |
@@ -86,3 +89,5 @@ OTA 下载独占 ESP8266，期间暂停 MQTT；失败且允许恢复时重连，
 | `MQTT SUB FAIL` | 主题是否在同一账号的 MQTT 控制台中实际创建，订阅是否获准 |
 
 `NET OFFLINE` 不等同于 Wi-Fi 未关联。配置主题名必须与云端已有主题一致：已使用过巴法云的设备优先沿用原主题；`envCmd`、`envState` 只是模板示例，不能假定它们已在账户中存在。不要通过公开聊天或仓库粘贴 Wi-Fi 密码、私钥。
+
+ESP8266 复位时的 ROM 启动日志可使用 74880 波特，随后 AT 固件使用 115200。程序在明确的 2 秒复位等待窗口内持续恢复接收、丢弃启动数据；开始 AT 握手前清空解析状态并重新记录错误计数基线。正常通信和 OTA 下载仍把新增丢字节或串口错误作为失败，不会跳过固件完整性检查。参考：[Espressif 启动日志说明](https://docs.espressif.com/projects/esptool/en/latest/esp8266/advanced-topics/boot-mode-selection.html)。

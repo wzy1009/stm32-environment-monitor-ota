@@ -69,6 +69,17 @@ static const char *FailureText(void)
     return "NET RETRY";
 }
 
+static const char *RxFailure(const EspAt_Stats *stats)
+{
+    if (stats->overflow != rx_stats.overflow) return "ESP RX FULL";
+    if (stats->rearm_failures != rx_stats.rearm_failures) return "ESP RX REARM";
+    if ((stats->last_uart_error & HAL_UART_ERROR_ORE) != 0U) return "ESP RX OVERRUN";
+    if ((stats->last_uart_error & HAL_UART_ERROR_FE) != 0U) return "ESP RX FRAME";
+    if ((stats->last_uart_error & HAL_UART_ERROR_NE) != 0U) return "ESP RX NOISE";
+    if ((stats->last_uart_error & HAL_UART_ERROR_PE) != 0U) return "ESP RX PARITY";
+    return "ESP RX ERROR";
+}
+
 static uint8_t ConfigValid(void)
 {
     const char *values[] = {CLOUD_WIFI_SSID, CLOUD_WIFI_PASSWORD};
@@ -227,8 +238,9 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
     EspAt_Poll();
     if (phase == OTA_OWNED) return;
     EspAt_GetStats(&stats);
-    if (stats.overflow != rx_stats.overflow || stats.uart_errors != rx_stats.uart_errors ||
-        stats.rearm_failures != rx_stats.rearm_failures) { Fail(now, "ESP RX ERROR"); return; }
+    if (phase != RETRY && phase != BOOT &&
+        (stats.overflow != rx_stats.overflow || stats.uart_errors != rx_stats.uart_errors ||
+         stats.rearm_failures != rx_stats.rearm_failures)) { Fail(now, RxFailure(&stats)); return; }
     response = EspAt_GetResponse();
     if (phase != RETRY && phase != BOOT &&
         (fault != 0U || EspAt_HasStreamFault() != 0U || response == ESP_AT_RESPONSE_ERROR ||
@@ -257,7 +269,9 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
         break;
     case BOOT:
         if ((uint32_t)(now - since) < 2000U) break;
+        /* ESP ROM logs can use 74880 baud; discard them before the 115200 AT handshake. */
         EspAt_ResetTransport();
+        EspAt_GetStats(&rx_stats);
         step = 0U;
         if (SendCommand(commands[step], now) != 0U) phase = COMMAND;
         break;

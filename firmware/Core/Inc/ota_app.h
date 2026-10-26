@@ -1,7 +1,7 @@
 #ifndef OTA_APP_H
 #define OTA_APP_H
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "0.4.2"
+#define FIRMWARE_VERSION "0.4.3"
 #endif
 #include <stdint.h>
 void OtaApp_Checkpoint(void);
