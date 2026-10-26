@@ -2,12 +2,14 @@
 #include "cloud_config.h"
 #include "cloud_mqtt.h"
 #include "esp_at.h"
+#include "ota_notice.h"
+#include "ota_app.h"
 #include <stdio.h>
 #include <string.h>
 
 typedef enum {
     DISABLED, RETRY, BOOT, COMMAND, PREP_CONNECT, PREP_SUBSCRIBE,
-    PROMPT, SEND, WAIT_CONNACK, WAIT_SUBACK, ONLINE, WAIT_PING
+    PROMPT, SEND, WAIT_CONNACK, WAIT_SUBACK, ONLINE, WAIT_PING, OTA_OWNED
 } Phase;
 typedef enum {TX_CONNECT, TX_SUBSCRIBE, TX_REPORT, TX_PING} TxKind;
 typedef struct {
@@ -35,7 +37,7 @@ uint8_t Cloud_IsOnline(void) { return online; }
 
 const char *Cloud_StatusText(void)
 {
-    return phase == DISABLED ? "NET CONFIG" : online != 0U ? "NET ONLINE" : "NET OFFLINE";
+    return phase == OTA_OWNED ? "NET OTA" : phase == DISABLED ? "NET CONFIG" : online != 0U ? "NET ONLINE" : "NET OFFLINE";
 }
 
 static uint8_t ConfigValid(void)
@@ -91,10 +93,13 @@ static void Receive(uint8_t byte)
     if (event == MQTT_DISARM) pending_command = 2U;
     if (event == MQTT_ARM && pending_command != 2U) pending_command = 1U;
     if (event == MQTT_STATUS) dirty = 1U;
+    if (event == MQTT_OTA)
+        (void)OtaNotice_OnCommand(parser.data + parser.payload_offset, parser.payload_length, FIRMWARE_VERSION);
 }
 
 void Cloud_Init(uint32_t now)
 {
+    OtaNotice_Clear();
     memset(&snapshot, 0, sizeof(snapshot));
     phase = DISABLED;
     online = connack = suback = pong = fault = pending_command = partial = 0U;
@@ -163,7 +168,7 @@ static void Report(uint32_t now)
     }
     n = snprintf(json, sizeof(json),
         "{\"temp_x10\":%s,\"humi_x10\":%s,\"valid\":%u,\"dht\":%u,\"ready\":%u,"
-        "\"motion\":%u,\"armed\":%u,\"alarm\":%u,\"alarm_count\":%lu,\"last_alarm_ms\":%lu,\"uptime_s\":%lu}",
+        "\"motion\":%u,\"armed\":%u,\"alarm\":%u,\"alarm_count\":%lu,\"last_alarm_ms\":%lu,\"uptime_s\":%lu,\"version\":\"" FIRMWARE_VERSION "\"}",
         temperature, humidity, (unsigned)snapshot.valid, (unsigned)snapshot.dht,
         (unsigned)snapshot.ready, (unsigned)snapshot.motion, (unsigned)snapshot.armed,
         (unsigned)snapshot.alarm, (unsigned long)alarm_count, (unsigned long)last_alarm_ms,
@@ -187,6 +192,7 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
     if (phase == DISABLED) return;
     Observe(state, sample, status, now);
     EspAt_Poll();
+    if (phase == OTA_OWNED) return;
     EspAt_GetStats(&stats);
     if (stats.overflow != rx_stats.overflow || stats.uart_errors != rx_stats.uart_errors ||
         stats.rearm_failures != rx_stats.rearm_failures) { Fail(now); return; }
@@ -294,4 +300,21 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
         break;
     default: break;
     }
+}
+
+uint8_t Cloud_PauseForOta(void)
+{
+#ifdef ENV_OTA_APP
+    if (phase != ONLINE || Mqtt_IsPartial(&parser) || !EspAt_StreamIdle()) return 0U;
+    phase = OTA_OWNED;
+    online = 0U;
+    return 1U;
+#else
+    return 0U;
+#endif
+}
+
+void Cloud_ResumeAfterOta(uint32_t now)
+{
+    if (phase == OTA_OWNED) Fail(now);
 }

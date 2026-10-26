@@ -2,11 +2,17 @@
 #include "cloud_mqtt.h"
 #include "esp_at.h"
 #include "esp_stream.h"
+#include "ota_notice.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 static MqttParser parser;
+static unsigned ota_notices;
+void OtaNotice_Clear(void) { ota_notices = 0U; }
+uint8_t OtaNotice_OnCommand(const uint8_t *p, uint16_t n, const char *version)
+{ assert(n > 0U && p[0] == '{' && version[0] != '\0'); ++ota_notices; return 1U; }
+uint8_t EspAt_StreamIdle(void) { return 1U; }
 static unsigned at_lines, prompts, stream_faults, data_count;
 static uint8_t data_bytes[64];
 void EspStream_OnLine(const char *line) { assert(strcmp(line, "OK") == 0); ++at_lines; }
@@ -28,18 +34,28 @@ static MqttEvent Feed(const uint8_t *bytes, uint16_t n)
 
 static void TestProtocolAndFraming(void)
 {
-    uint8_t b[384], small[8], guard[8];
+    uint8_t b[448], small[8], guard[8];
     uint16_t n;
     unsigned i;
     static const uint8_t conn[] = {0x20U, 2U, 0U, 0U};
     static const uint8_t sub[] = {0x90U, 3U, 0U, 1U, 0U};
     static const uint8_t denied[] = {0x90U, 3U, 0U, 1U, 0x80U};
-    static const uint8_t overflow[] = {0x30U, 0x81U, 3U};
+    static const uint8_t overflow[] = {0x30U, 0x81U, 4U};
     static const uint8_t bad_length[] = {0x30U, 0x80U, 0U};
     static const uint8_t wire[] = "\r\nOK\r\n> +IPD,7:OK\r\n\0>x\r\nOK\r\n";
     Mqtt_Init(&parser, "envCmd");
     assert(Feed(conn, sizeof(conn)) == MQTT_CONNACK);
     assert(Feed(sub, sizeof(sub)) == MQTT_SUBACK);
+    {
+        char payload[361], topic[41];
+        memset(payload, 'a', 360U); payload[0] = '{'; payload[360] = '\0';
+        memset(topic, 't', 40U); topic[40] = '\0';
+        Mqtt_Init(&parser, topic);
+        n = Mqtt_Publish(b, sizeof(b), topic, payload);
+        assert(n > 384U && Feed(b, n) == MQTT_OTA);
+        assert(parser.payload_length == 360U && memcmp(parser.data + parser.payload_offset, payload, 360U) == 0);
+        Mqtt_Init(&parser, "envCmd");
+    }
     n = Mqtt_Publish(b, sizeof(b), "envCmd", "ARM");
     assert(n != 0U && Feed(b, n) == MQTT_ARM);
     assert(Mqtt_IsPartial(&parser) == 0U);
@@ -249,6 +265,13 @@ static void TestCloudLifecycle(void)
     allow_send_ok = 0U; Command("envCmd", "STATUS", 0U); now += 1200U;
     Tick(1U); Tick(1U); now += 5000U; Tick(1U); assert(!Cloud_IsOnline());
     allow_send_ok = 1U; Online();
+    Command("envCmdOther", "{}", 0U); Tick(1U); assert(ota_notices == 0U);
+    Command("envCmd", "{}", 1U); Tick(1U); assert(ota_notices == 0U);
+    Command("envCmd", "{}", 0U); Tick(1U); assert(ota_notices == 1U);
+    Settle();
+    assert(Cloud_PauseForOta() && !Cloud_IsOnline());
+    { unsigned before = sends; now += 60000U; Tick(1U); assert(sends == before); }
+    Cloud_ResumeAfterOta(now); Online();
     puts("PASS 10: handshake, telemetry, controls, alarm sync, local priority, wrap and recovery");
 }
 

@@ -22,4 +22,5 @@ void EspAt_Poll(void);
 void EspAt_GetStats(EspAt_Stats *stats);
 uint8_t EspAt_HasPrompt(void);
 uint8_t EspAt_HasStreamFault(void);
+uint8_t EspAt_StreamIdle(void);
 #endif

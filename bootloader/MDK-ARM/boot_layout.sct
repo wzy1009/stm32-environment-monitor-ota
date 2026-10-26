@@ -1,0 +1,14 @@
+; Boot code/data below 0x08007800; reserve its last 2 KiB page for setup.
+LR_IROM1 0x08000000 0x00008000 {
+  ER_IROM1 0x08000000 0x00007800 {
+    *.o (RESET, +First)
+    *(InRoot$$Sections)
+    .ANY (+RO)
+  }
+  RW_IRAM1 0x20000000 0x00010000 {
+    .ANY (+RW +ZI)
+  }
+  ER_BOOT_SETUP 0x08007800 FIXED 0x8 {
+    *(BOOT_SETUP)
+  }
+}
