@@ -9,7 +9,7 @@ python tests/run_tests.py --tcc <tcc.exe的路径>
 | 文件 | 检查内容 |
 |---|---|
 | `test_local_monitor.c` | DHT11 数据与虚拟波形、断线恢复、按键消抖、上电立即就绪、布防与报警 |
-| `test_cloud.c` | MQTT/IPD、非法配置、远程命令、KEY1 优先、超时重连和 OTA 接收权限与网络交接、Wi-Fi 与订阅失败的独立提示、复位期串口噪声容忍和正常通信期错误中止 |
+| `test_cloud.c` | MQTT/IPD、新会话/已有会话确认与非法返回码、主动接收模式配置、非法配置、远程命令、KEY1 优先、超时重连和 OTA 接收权限与网络交接、Wi-Fi 与订阅失败的独立提示、复位期串口噪声容忍和正常通信期错误中止 |
 | `test_ota.c` | 通知与 HTTP 校验、正确下载、错误 MD5/长度/向量、旧 pending、EEPROM 异常、提交结果不明确、计时回绕、布防取消和串口丢字节 |
 | `test_boot.c` | 运行真实安装器和 Flash 边界检查；正常安装、奇数尾字节、坏暂存/记录/向量、擦写失败、读回损坏、清 pending 失败和重试 |
 | `test_package.py` | BIN 版本/向量/URL、初始 HEX 校验与合并、错误地址和校验和拒绝 |

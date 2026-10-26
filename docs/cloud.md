@@ -91,3 +91,5 @@ OTA 下载独占 ESP8266，期间暂停 MQTT；失败且允许恢复时重连，
 `NET OFFLINE` 不等同于 Wi-Fi 未关联。配置主题名必须与云端已有主题一致：已使用过巴法云的设备优先沿用原主题；`envCmd`、`envState` 只是模板示例，不能假定它们已在账户中存在。不要通过公开聊天或仓库粘贴 Wi-Fi 密码、私钥。
 
 ESP8266 复位时的 ROM 启动日志可使用 74880 波特，随后 AT 固件使用 115200。程序在明确的 2 秒复位等待窗口内持续恢复接收、丢弃启动数据；开始 AT 握手前清空解析状态并重新记录错误计数基线。正常通信和 OTA 下载仍把新增丢字节或串口错误作为失败，不会跳过固件完整性检查。参考：[Espressif 启动日志说明](https://docs.espressif.com/projects/esptool/en/latest/esp8266/advanced-topics/boot-mode-selection.html)。
+
+MQTT 使用持久会话，与原工程保持一致。登录确认允许新会话或已有会话两种 Session Present 标志，但只接受返回码 0；保留位和拒绝码仍判为失败。每次登录后重新订阅，订阅确认前不执行远程控制，保留命令仍被忽略。建立 MQTT TCP 前显式设置 `AT+CIPDINFO=0`、`AT+CIPRECVMODE=0`，让 ESP 的主动接收格式与 MCU 拆帧器一致。

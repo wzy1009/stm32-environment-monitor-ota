@@ -38,7 +38,8 @@ static uint16_t String(uint8_t *out, const char *text)
 
 uint16_t Mqtt_Connect(uint8_t *out, uint16_t capacity, const char *client_id)
 {
-    static const uint8_t header[] = {0U, 4U, 'M', 'Q', 'T', 'T', 4U, 2U, 0U, 60U};
+    /* Resume the UID session, then explicitly refresh the subscription. */
+    static const uint8_t header[] = {0U, 4U, 'M', 'Q', 'T', 'T', 4U, 0U, 0U, 60U};
     size_t n = strlen(client_id);
     if (n == 0U || n > 64U || n + 15U > capacity) return 0U;
     memcpy(out + 3U, header, sizeof(header));
@@ -80,7 +81,7 @@ static MqttEvent Decode(MqttParser *p)
     uint16_t n, body;
     const uint8_t *b = p->data;
     if (p->header == 0x20U)
-        return p->remaining == 2U && b[0] == 0U && b[1] == 0U ? MQTT_CONNACK : MQTT_FAULT;
+        return p->remaining == 2U && (b[0] & 0xFEU) == 0U && b[1] == 0U ? MQTT_CONNACK : MQTT_FAULT;
     if (p->header == 0x90U)
         return p->remaining == 3U && b[0] == 0U && b[1] == 1U && b[2] == 0U ? MQTT_SUBACK : MQTT_FAULT;
     if (p->header == 0xD0U) return p->remaining == 0U ? MQTT_PINGRESP : MQTT_FAULT;

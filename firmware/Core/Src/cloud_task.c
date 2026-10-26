@@ -13,6 +13,8 @@ typedef enum {
     PROMPT, SEND, WAIT_CONNACK, WAIT_SUBACK, ONLINE, WAIT_PING, OTA_OWNED
 } Phase;
 typedef enum {TX_CONNECT, TX_SUBSCRIBE, TX_REPORT, TX_PING} TxKind;
+#define WIFI_JOIN_STEP 6U
+#define TCP_CONNECT_STEP 9U
 typedef struct {
     int16_t temperature;
     uint16_t humidity;
@@ -21,7 +23,8 @@ typedef struct {
 
 static const char * const commands[] = {
     "AT\r\n", "ATE0\r\n", "AT+CWMODE_CUR=1\r\n", "AT+CWDHCP_CUR=1,1\r\n",
-    "AT+CIPMUX=0\r\n", "AT+CIPMODE=0\r\n", NULL, "AT+CIPSTART=\"TCP\",\"bemfa.com\",9501\r\n"
+    "AT+CIPMUX=0\r\n", "AT+CIPMODE=0\r\n", NULL,
+    "AT+CIPDINFO=0\r\n", "AT+CIPRECVMODE=0\r\n", "AT+CIPSTART=\"TCP\",\"bemfa.com\",9501\r\n"
 };
 static Phase phase;
 static TxKind tx_kind;
@@ -46,8 +49,8 @@ const char *Cloud_StatusText(void)
     if (phase == BOOT) return "ESP START";
     if (phase == COMMAND) {
         if (step < 2U) return "ESP CHECK";
-        if (step < 6U) return "ESP SETUP";
-        return step == 6U ? "WIFI JOIN" : "SERVER CONNECT";
+        if (step == WIFI_JOIN_STEP) return "WIFI JOIN";
+        return step == TCP_CONNECT_STEP ? "SERVER CONNECT" : "ESP SETUP";
     }
     if (phase == PREP_SUBSCRIBE || phase == WAIT_SUBACK ||
         ((phase == PROMPT || phase == SEND) && tx_kind == TX_SUBSCRIBE)) return "MQTT SUBSCRIBE";
@@ -58,8 +61,8 @@ static const char *FailureText(void)
 {
     if (phase == COMMAND) {
         if (step < 2U) return "ESP NO REPLY";
-        if (step < 6U) return "ESP SETUP FAIL";
-        return step == 6U ? "WIFI JOIN FAIL" : "SERVER FAIL";
+        if (step == WIFI_JOIN_STEP) return "WIFI JOIN FAIL";
+        return step == TCP_CONNECT_STEP ? "SERVER FAIL" : "ESP SETUP FAIL";
     }
     if (phase == WAIT_CONNACK || ((phase == PROMPT || phase == SEND) && tx_kind == TX_CONNECT))
         return "MQTT LOGIN FAIL";
@@ -282,12 +285,12 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
                 EspAt_ResetResponse();
                 EspAt_SetDataHandler(Receive);
                 phase = PREP_CONNECT;
-            } else if (step == 6U) {
+            } else if (step == WIFI_JOIN_STEP) {
                 (void)snprintf(join, sizeof(join), "AT+CWJAP_CUR=\"%s\",\"%s\"\r\n",
                                CLOUD_WIFI_SSID, CLOUD_WIFI_PASSWORD);
                 (void)SendCommand(join, now);
             } else (void)SendCommand(commands[step], now);
-        } else if ((uint32_t)(now - since) >= (step == 6U ? 30000U : 10000U)) Fail(now, FailureText());
+        } else if ((uint32_t)(now - since) >= (step == WIFI_JOIN_STEP ? 30000U : 10000U)) Fail(now, FailureText());
         break;
     case PREP_CONNECT:
         packet_length = Mqtt_Connect(packet, sizeof(packet), CLOUD_BEMFA_UID);

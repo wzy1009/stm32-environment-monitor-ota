@@ -40,6 +40,9 @@ static void TestProtocolAndFraming(void)
     uint16_t n;
     unsigned i;
     static const uint8_t conn[] = {0x20U, 2U, 0U, 0U};
+    static const uint8_t resumed[] = {0x20U, 2U, 1U, 0U};
+    static const uint8_t invalid_flags[] = {0x20U, 2U, 2U, 0U};
+    static const uint8_t unauthorized[] = {0x20U, 2U, 0U, 5U};
     static const uint8_t sub[] = {0x90U, 3U, 0U, 1U, 0U};
     static const uint8_t denied[] = {0x90U, 3U, 0U, 1U, 0x80U};
     static const uint8_t overflow[] = {0x30U, 0x81U, 4U};
@@ -47,6 +50,11 @@ static void TestProtocolAndFraming(void)
     static const uint8_t wire[] = "\r\nOK\r\n> +IPD,7:OK\r\n\0>x\r\nOK\r\n";
     Mqtt_Init(&parser, "envCmd");
     assert(Feed(conn, sizeof(conn)) == MQTT_CONNACK);
+    assert(Feed(resumed, sizeof(resumed)) == MQTT_CONNACK);
+    assert(Feed(invalid_flags, sizeof(invalid_flags)) == MQTT_FAULT);
+    Mqtt_Init(&parser, "envCmd");
+    assert(Feed(unauthorized, sizeof(unauthorized)) == MQTT_FAULT);
+    Mqtt_Init(&parser, "envCmd");
     assert(Feed(sub, sizeof(sub)) == MQTT_SUBACK);
     {
         char payload[361], topic[41];
@@ -91,7 +99,7 @@ static void TestProtocolAndFraming(void)
     assert(memcmp(small, guard, sizeof(small)) == 0);
     assert(Mqtt_TopicValid("envCmd") && !Mqtt_TopicValid("env/#") && !Mqtt_TopicValid(""));
     n = Mqtt_Connect(b, sizeof(b), "00000000000000000000000000000000");
-    assert(n == 46U && b[0] == 0x10U && b[1] == 44U && b[10] == 0U && b[11] == 60U);
+    assert(n == 46U && b[0] == 0x10U && b[1] == 44U && b[9] == 0U && b[10] == 0U && b[11] == 60U);
     n = Mqtt_Subscribe(b, sizeof(b), "envCmd");
     assert(n == 13U && b[0] == 0x82U && b[2] == 0U && b[3] == 1U && b[n - 1U] == 0U);
     memset(b, 'a', 200U); b[200] = 0U;
@@ -118,6 +126,7 @@ static unsigned sends, publishes, connects, subscriptions, pings, resets;
 static uint8_t prompt, allow_prompt = 1U, allow_send_ok = 1U, allow_pong = 1U;
 static uint8_t reject_join, reject_subscription;
 static uint8_t boot_noise;
+static uint8_t active_rx, plain_ipd;
 static uint32_t reset_started;
 static char last_json[384], last_command[128];
 static MonitorState monitor;
@@ -154,11 +163,13 @@ HAL_StatusTypeDef EspAt_Send(const char *command)
 {
     ++sends;
     assert(strlen(command) < sizeof(last_command)); strcpy(last_command, command);
+    if (strcmp(command, "AT+CIPDINFO=0\r\n") == 0) plain_ipd = 1U;
+    if (strcmp(command, "AT+CIPRECVMODE=0\r\n") == 0) active_rx = 1U;
     if (strncmp(command, "AT+CIPSEND=", 11U) == 0) { prompt = allow_prompt; }
     else {
         response = reject_join && strncmp(command, "AT+CWJAP_CUR=", 13U) == 0 ? ESP_AT_RESPONSE_ERROR : ESP_AT_RESPONSE_OK;
         if (strcmp(command, "AT+RST\r\n") == 0) {
-            ++resets; reset_started = now;
+            ++resets; reset_started = now; active_rx = plain_ipd = 0U;
             if (boot_noise) { ++stats.uart_errors; stats.last_uart_error = HAL_UART_ERROR_FE; }
         }
     }
@@ -166,7 +177,7 @@ HAL_StatusTypeDef EspAt_Send(const char *command)
 }
 HAL_StatusTypeDef EspAt_SendBytes(const uint8_t *b, uint16_t n)
 {
-    static const uint8_t conn[] = {0x20U, 2U, 0U, 0U};
+    static const uint8_t conn[] = {0x20U, 2U, 1U, 0U};
     static const uint8_t sub[] = {0x90U, 3U, 0U, 1U, 0U};
     static const uint8_t denied[] = {0x90U, 3U, 0U, 1U, 0x80U};
     static const uint8_t pong[] = {0xD0U, 0U};
@@ -174,7 +185,7 @@ HAL_StatusTypeDef EspAt_SendBytes(const uint8_t *b, uint16_t n)
     ++sends;
     response = allow_send_ok ? ESP_AT_RESPONSE_SEND_OK : ESP_AT_RESPONSE_NONE;
     if (b[0] == 0x10U) {
-        assert(!Cloud_IsOnline()); ++connects;
+        assert(!Cloud_IsOnline() && active_rx && plain_ipd); ++connects;
         Command("envCmd", "ARM", 0U); /* commands before subscription are ignored */
         Inject(conn, sizeof(conn));
     } else if (b[0] == 0x82U) {
