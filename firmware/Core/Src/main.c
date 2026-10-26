@@ -37,7 +37,6 @@ static void RenderStatus(const MonitorState *state, uint32_t now)
     static const char * const dht_text[] = {"DHT WAIT", "DHT OK", "DHT TIMEOUT", "DHT CHECKSUM", "DHT DATA ERROR"};
     char line[32];
     int temperature;
-    uint32_t elapsed;
     memset(display_frame, 0, sizeof(display_frame));
     Oled_DrawText(display_frame, 0U, 0U, "ENV V" FIRMWARE_VERSION);
     if (sample->valid != 0U) {
@@ -54,15 +53,7 @@ static void RenderStatus(const MonitorState *state, uint32_t now)
         Oled_DrawText(display_frame, 0U, 2U, "HUM --.- RH");
     }
     Oled_DrawText(display_frame, 0U, 3U, dht_text[Dht11_GetStatus()]);
-    if (state->ready == 0U) {
-        elapsed = (uint32_t)(now - state->started_at);
-        (void)snprintf(line, sizeof(line), "PIR WARMUP %luS",
-                       (unsigned long)(elapsed >= MONITOR_PIR_WARMUP_MS ? 0U :
-                       (MONITOR_PIR_WARMUP_MS - elapsed + 999U) / 1000U));
-        Oled_DrawText(display_frame, 0U, 4U, line);
-    } else {
-        Oled_DrawText(display_frame, 0U, 4U, state->motion != 0U ? "PIR MOTION" : "PIR CLEAR");
-    }
+    Oled_DrawText(display_frame, 0U, 4U, state->motion != 0U ? "PIR MOTION" : "PIR CLEAR");
     Oled_DrawText(display_frame, 0U, 5U, state->armed == 0U ? "MODE DISARMED" :
                   Monitor_IsArming(state, now) != 0U ? "MODE ARMING" : "MODE ARMED");
     Oled_DrawText(display_frame, 0U, 6U, state->alarm != 0U ? "ALARM ON" : "ALARM OFF");

@@ -16,7 +16,7 @@
 
 ## 看状态
 
-模块复位后依次配置 Wi-Fi、连接 TCP、等待 MQTT CONNACK 和订阅 SUBACK。只有订阅成功后才显示 `NET ONLINE`，连接中或重连时显示 `NET OFFLINE`。
+模块复位后依次配置 Wi-Fi、连接 TCP、等待 MQTT CONNACK 和订阅 SUBACK。只有订阅成功后才显示 `NET ONLINE`，连接过程中分别显示 `ESP CHECK`、`WIFI JOIN`、`SERVER CONNECT`、`MQTT LOGIN`、`MQTT SUBSCRIBE`。失败后保留对应阶段提示再重试。
 
 设备向 `envState/up` 发布 JSON，只更新巴法云中 `envState` 的最新值，不向订阅者转发。需要其他客户端实时接收时，应另行调整发布主题；当前版本以控制台查看为准。
 
@@ -30,8 +30,8 @@
 |---|---|
 | `temp_x10` / `humi_x10` | 温度、湿度乘 10；示例为 25.4 ℃、60.2% RH；采集失效时均为 `null` |
 | `valid` / `dht` | 本次采集是否有效；DHT 状态：0 等待、1 成功、2 超时、3 校验错误、4 数据错误 |
-| `ready` / `motion` | PIR 是否预热完成 / 过滤后是否检测到活动 |
-| `armed` / `alarm` | 是否请求布防 / 是否已触发并保持报警；布防后仍有 3 秒延时，PIR 还须预热完成 |
+| `ready` / `motion` | PIR 是否启用 / 过滤后是否检测到活动（当前取消额外预热等待，ready 为 1） |
+| `armed` / `alarm` | 是否请求布防 / 是否已触发并保持报警；布防后仍有 3 秒延时 |
 | `alarm_count` | 本次开机以来报警由 0 变 1 的次数；撤防、重连不清零，MCU 复位清零 |
 | `last_alarm_ms` | 最近一次触发报警时的开机毫秒计数；无报警时为 0，约 49.7 天回绕 |
 | `uptime_s` | 当前毫秒计数换算的秒数，随毫秒计数回绕 |
@@ -64,7 +64,7 @@ OTA 下载独占 ESP8266，期间暂停 MQTT；失败且允许恢复时重连，
 
 1. 未填写配置时，确认 `NET CONFIG`，本地温湿度与 KEY0/KEY1 正常。
 2. 填好配置并重编译，确认 `NET ONLINE` 和 `envState` JSON 定时刷新。
-3. 发 `ARM`，等待预热和布防延时结束，走动触发报警；查看 `alarm` 和 `alarm_count`。
+3. 发 `ARM`，等待 3 秒布防延时结束，走动触发报警；查看 `alarm` 和 `alarm_count`。
 4. 发 `DISARM`，确认蜂鸣器停止、云端状态更新；按住 KEY1 再发 `ARM`，应保持撤防。
 5. 断开路由器，确认本地仍可报警和撤防；恢复后检查自动重连和最新状态。
 6. 同时持续采集、刷新屏幕并远程控制，检查 DHT 超时/校验失败、串口丢字节和重连情况。UART 接收中断保持开启，实际时序须实测。
@@ -72,3 +72,17 @@ OTA 下载独占 ESP8266，期间暂停 MQTT；失败且允许恢复时重连，
 以上为待执行的实板步骤；当前通过的是编译和本机模拟测试。
 
 协议依据：[巴法云 MQTT 官方文档](https://cloud.bemfa.com/docs/src/mqtt.html)（MQTT 3.1.1、Client ID 认证、9501/9503 与 `/set`、`/up` 规则）。
+
+## 连接失败看哪里
+
+| 屏幕提示 | 排查方向 |
+|---|---|
+| `NET CONFIG` | 联网配置缺失、无效，或编译时未启用本地配置 |
+| `ESP NO REPLY` / `ESP TX FAIL` / `ESP RX ERROR` | 模块供电、P7 跳线、115200 串口与收发 |
+| `ESP SETUP FAIL` | AT 固件是否支持当前配置指令 |
+| `WIFI JOIN FAIL` | 热点是否开启、名称密码、2.4 GHz 与信号 |
+| `SERVER FAIL` | 已进入服务器连接阶段，检查外网、DNS、端口可达性 |
+| `MQTT LOGIN FAIL` | MQTT Client ID/私钥与认证阶段 |
+| `MQTT SUB FAIL` | 主题是否在同一账号的 MQTT 控制台中实际创建，订阅是否获准 |
+
+`NET OFFLINE` 不等同于 Wi-Fi 未关联。配置主题名必须与云端已有主题一致：已使用过巴法云的设备优先沿用原主题；`envCmd`、`envState` 只是模板示例，不能假定它们已在账户中存在。不要通过公开聊天或仓库粘贴 Wi-Fi 密码、私钥。

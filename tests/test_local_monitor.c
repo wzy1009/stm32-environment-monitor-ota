@@ -135,18 +135,18 @@ static void PressToggle(MonitorState *s, uint32_t now, uint8_t motion)
     Monitor_Update(s, now + 61U, 0U, 0U, motion);
 }
 
-static void TestWarmup(void)
+static void TestStartupReady(void)
 {
     MonitorState s;
     Monitor_Init(&s, 0U, 0U, 0U, 1U);
     Monitor_Update(&s, 100U, 0U, 0U, 1U);
     assert(s.armed == 0U && s.alarm == 0U && s.motion != 0U);
     PressToggle(&s, 1000U, 1U);
-    Monitor_Update(&s, 59999U, 0U, 0U, 1U);
-    assert(s.ready == 0U && s.alarm == 0U);
-    Monitor_Update(&s, 60000U, 0U, 0U, 1U);
+    Monitor_Update(&s, 4029U, 0U, 0U, 1U);
+    assert(s.ready != 0U && s.alarm == 0U);
+    Monitor_Update(&s, 4030U, 0U, 0U, 1U);
     assert(s.ready != 0U && s.alarm != 0U);
-    puts("PASS 4: default disarm and warmup suppress alarms");
+    puts("PASS 4: ready at startup, default disarm and 3-second arming delay");
 }
 
 static void TestButtonDebounceAndBootHold(void)
@@ -232,7 +232,7 @@ static void TestTickWrap(void)
     assert(Monitor_IsArming(&s, 0xFFFFFF00U + 3029U) != 0U);
     Monitor_Update(&s, 0xFFFFFF00U + 3129U, 0U, 0U, 1U);
     assert(s.alarm != 0U);
-    puts("PASS 8: warmup, arm delay, and filters across tick wrap");
+    puts("PASS 8: arm delay and filters across tick wrap");
 }
 
 int main(void)
@@ -240,7 +240,7 @@ int main(void)
     TestFrameValidation();
     TestDhtCaptureAndSchedule();
     TestDhtFaultRecovery();
-    TestWarmup();
+    TestStartupReady();
     TestButtonDebounceAndBootHold();
     TestArmingFilterAndLatch();
     TestDisarmPriority();

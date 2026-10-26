@@ -18,7 +18,7 @@ static uint8_t KeyPressed(MonitorKey *key, uint32_t now, uint8_t down)
 void Monitor_Init(MonitorState *state, uint32_t now, uint8_t key0, uint8_t key1, uint8_t motion)
 {
     memset(state, 0, sizeof(*state));
-    state->started_at = now;
+    state->ready = 1U;
     state->motion_changed_at = now;
     state->raw_motion = motion;
     /* A key held during reset must be released before it can generate an event. */
@@ -36,7 +36,6 @@ void Monitor_Update(MonitorState *state, uint32_t now, uint8_t key0, uint8_t key
 {
     uint8_t toggle = KeyPressed(&state->key0, now, key0);
     uint8_t disarm = KeyPressed(&state->key1, now, key1);
-    if ((uint32_t)(now - state->started_at) >= MONITOR_PIR_WARMUP_MS) state->ready = 1U;
     if (motion != state->raw_motion) {
         state->raw_motion = motion;
         state->motion_changed_at = now;

@@ -116,6 +116,7 @@ static uint8_t queue[4096];
 static uint16_t queued;
 static unsigned sends, publishes, connects, subscriptions, pings, resets;
 static uint8_t prompt, allow_prompt = 1U, allow_send_ok = 1U, allow_pong = 1U;
+static uint8_t reject_join, reject_subscription;
 static char last_json[384], last_command[128];
 static MonitorState monitor;
 static Dht11Sample sample = {254, 602U, 1U};
@@ -152,13 +153,17 @@ HAL_StatusTypeDef EspAt_Send(const char *command)
     ++sends;
     assert(strlen(command) < sizeof(last_command)); strcpy(last_command, command);
     if (strncmp(command, "AT+CIPSEND=", 11U) == 0) { prompt = allow_prompt; }
-    else { response = ESP_AT_RESPONSE_OK; if (strcmp(command, "AT+RST\r\n") == 0) ++resets; }
+    else {
+        response = reject_join && strncmp(command, "AT+CWJAP_CUR=", 13U) == 0 ? ESP_AT_RESPONSE_ERROR : ESP_AT_RESPONSE_OK;
+        if (strcmp(command, "AT+RST\r\n") == 0) ++resets;
+    }
     return HAL_OK;
 }
 HAL_StatusTypeDef EspAt_SendBytes(const uint8_t *b, uint16_t n)
 {
     static const uint8_t conn[] = {0x20U, 2U, 0U, 0U};
     static const uint8_t sub[] = {0x90U, 3U, 0U, 1U, 0U};
+    static const uint8_t denied[] = {0x90U, 3U, 0U, 1U, 0x80U};
     static const uint8_t pong[] = {0xD0U, 0U};
     assert(n > 1U);
     ++sends;
@@ -168,7 +173,8 @@ HAL_StatusTypeDef EspAt_SendBytes(const uint8_t *b, uint16_t n)
         Command("envCmd", "ARM", 0U); /* commands before subscription are ignored */
         Inject(conn, sizeof(conn));
     } else if (b[0] == 0x82U) {
-        assert(!Cloud_IsOnline()); ++subscriptions; Inject(sub, sizeof(sub));
+        assert(!Cloud_IsOnline()); ++subscriptions;
+        Inject(reject_subscription ? denied : sub, sizeof(sub));
     } else if (b[0] == 0x30U) {
         uint16_t prefix = (b[1] & 128U) ? 3U : 2U;
         uint16_t topic = (uint16_t)((uint16_t)b[prefix] * 256U + b[prefix + 1U]);
@@ -226,7 +232,6 @@ static void TestCloudLifecycle(void)
     armed_at = monitor.armed_at;
     Command("envCmd", "ARM", 0U); Tick(0U);
     assert(monitor.armed_at == armed_at);
-    monitor.started_at = now - 60000U;
     monitor.armed_at = now - 3000U;
     monitor.raw_motion = monitor.motion = 1U;
     monitor.motion_changed_at = now - 100U;
@@ -277,9 +282,24 @@ static void TestCloudLifecycle(void)
     puts("PASS 10: handshake, telemetry, controls, alarm sync, local priority, wrap and recovery");
 }
 
+static void CheckFailureDisplay(uint8_t join_failure, const char *expected)
+{
+    unsigned i;
+    now = 0U; key1 = 0U;
+    reject_join = join_failure;
+    reject_subscription = !join_failure;
+    Monitor_Init(&monitor, now, 0U, 0U, 0U);
+    Cloud_Init(now);
+    for (i = 0U; i < 4000U && strcmp(Cloud_StatusText(), expected) != 0; ++i) Tick(1U);
+    assert(strcmp(Cloud_StatusText(), expected) == 0 && !Cloud_IsOnline());
+}
+
 int main(void)
 {
     TestProtocolAndFraming();
     TestCloudLifecycle();
+    CheckFailureDisplay(1U, "WIFI JOIN FAIL");
+    CheckFailureDisplay(0U, "MQTT SUB FAIL");
+    puts("PASS: Wi-Fi join and MQTT subscription failures have distinct screen diagnostics");
     return 0;
 }

@@ -32,13 +32,41 @@ static uint8_t packet[MQTT_PACKET_CAPACITY];
 static uint16_t packet_length;
 static uint32_t since, wait_ms, retry_ms, last_ping, last_report, generation, tx_generation;
 static uint32_t alarm_count, last_alarm_ms, partial_since;
+static const char *last_failure = "NET OFFLINE";
 static uint8_t step, online, connack, suback, pong, fault, pending_command, dirty, partial;
 
 uint8_t Cloud_IsOnline(void) { return online; }
 
 const char *Cloud_StatusText(void)
 {
-    return phase == OTA_OWNED ? "NET OTA" : phase == DISABLED ? "NET CONFIG" : online != 0U ? "NET ONLINE" : "NET OFFLINE";
+    if (phase == DISABLED) return "NET CONFIG";
+    if (phase == OTA_OWNED) return "NET OTA";
+    if (online != 0U) return "NET ONLINE";
+    if (phase == RETRY) return last_failure;
+    if (phase == BOOT) return "ESP START";
+    if (phase == COMMAND) {
+        if (step < 2U) return "ESP CHECK";
+        if (step < 6U) return "ESP SETUP";
+        return step == 6U ? "WIFI JOIN" : "SERVER CONNECT";
+    }
+    if (phase == PREP_SUBSCRIBE || phase == WAIT_SUBACK ||
+        ((phase == PROMPT || phase == SEND) && tx_kind == TX_SUBSCRIBE)) return "MQTT SUBSCRIBE";
+    return "MQTT LOGIN";
+}
+
+static const char *FailureText(void)
+{
+    if (phase == COMMAND) {
+        if (step < 2U) return "ESP NO REPLY";
+        if (step < 6U) return "ESP SETUP FAIL";
+        return step == 6U ? "WIFI JOIN FAIL" : "SERVER FAIL";
+    }
+    if (phase == WAIT_CONNACK || ((phase == PROMPT || phase == SEND) && tx_kind == TX_CONNECT))
+        return "MQTT LOGIN FAIL";
+    if (phase == WAIT_SUBACK || ((phase == PROMPT || phase == SEND) && tx_kind == TX_SUBSCRIBE))
+        return "MQTT SUB FAIL";
+    if (phase == WAIT_PING) return "MQTT PING FAIL";
+    return "NET RETRY";
 }
 
 static uint8_t ConfigValid(void)
@@ -63,8 +91,9 @@ static uint8_t ConfigValid(void)
            strcmp(CLOUD_STATE_TOPIC, CLOUD_COMMAND_TOPIC) != 0;
 }
 
-static void Fail(uint32_t now)
+static void Fail(uint32_t now, const char *reason)
 {
+    last_failure = reason;
     online = connack = suback = pong = pending_command = partial = 0U;
     phase = RETRY;
     since = now;
@@ -101,6 +130,7 @@ static void Receive(uint8_t byte)
 void Cloud_Init(uint32_t now)
 {
     OtaNotice_Clear();
+    last_failure = "NET OFFLINE";
     memset(&snapshot, 0, sizeof(snapshot));
     phase = DISABLED;
     online = connack = suback = pong = fault = pending_command = partial = 0U;
@@ -121,14 +151,14 @@ static uint8_t SendCommand(const char *command, uint32_t now)
 {
     EspAt_ResetResponse();
     since = now;
-    if (EspAt_Send(command) != HAL_OK) { Fail(now); return 0U; }
+    if (EspAt_Send(command) != HAL_OK) { Fail(now, "ESP TX FAIL"); return 0U; }
     return 1U;
 }
 
 static void StartPacket(TxKind kind, uint32_t now)
 {
     char command[32];
-    if (packet_length == 0U) { Fail(now); return; }
+    if (packet_length == 0U) { Fail(now, FailureText()); return; }
     tx_kind = kind;
     (void)snprintf(command, sizeof(command), "AT+CIPSEND=%u\r\n", (unsigned)packet_length);
     if (SendCommand(command, now) != 0U) phase = PROMPT;
@@ -176,7 +206,7 @@ static void Report(uint32_t now)
         (unsigned)snapshot.ready, (unsigned)snapshot.motion, (unsigned)snapshot.armed,
         (unsigned)snapshot.alarm, (unsigned long)alarm_count, (unsigned long)last_alarm_ms,
         (unsigned long)(now / 1000U), (unsigned)ota.stage);
-    if (n < 0 || (size_t)n >= sizeof(json)) { Fail(now); return; }
+    if (n < 0 || (size_t)n >= sizeof(json)) { Fail(now, FailureText()); return; }
     (void)snprintf(topic, sizeof(topic), "%s/up", CLOUD_STATE_TOPIC);
     packet_length = Mqtt_Publish(packet, sizeof(packet), topic, json);
     tx_generation = generation;
@@ -198,17 +228,17 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
     if (phase == OTA_OWNED) return;
     EspAt_GetStats(&stats);
     if (stats.overflow != rx_stats.overflow || stats.uart_errors != rx_stats.uart_errors ||
-        stats.rearm_failures != rx_stats.rearm_failures) { Fail(now); return; }
+        stats.rearm_failures != rx_stats.rearm_failures) { Fail(now, "ESP RX ERROR"); return; }
     response = EspAt_GetResponse();
     if (phase != RETRY && phase != BOOT &&
         (fault != 0U || EspAt_HasStreamFault() != 0U || response == ESP_AT_RESPONSE_ERROR ||
          response == ESP_AT_RESPONSE_BAD_TEXT || response == ESP_AT_RESPONSE_CLOSED)) {
-        Fail(now); return;
+        Fail(now, FailureText()); return;
     }
     is_partial = Mqtt_IsPartial(&parser);
     if (is_partial != 0U && partial == 0U) partial_since = now;
     partial = is_partial;
-    if (partial != 0U && (uint32_t)(now - partial_since) >= 10000U) { Fail(now); return; }
+    if (partial != 0U && (uint32_t)(now - partial_since) >= 10000U) { Fail(now, FailureText()); return; }
     if (pending_command != 0U) {
         Monitor_SetArmed(state, now, pending_command == 1U);
         pending_command = 0U;
@@ -243,7 +273,7 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
                                CLOUD_WIFI_SSID, CLOUD_WIFI_PASSWORD);
                 (void)SendCommand(join, now);
             } else (void)SendCommand(commands[step], now);
-        } else if ((uint32_t)(now - since) >= (step == 6U ? 30000U : 10000U)) Fail(now);
+        } else if ((uint32_t)(now - since) >= (step == 6U ? 30000U : 10000U)) Fail(now, FailureText());
         break;
     case PREP_CONNECT:
         packet_length = Mqtt_Connect(packet, sizeof(packet), CLOUD_BEMFA_UID);
@@ -256,9 +286,9 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
     case PROMPT:
         if (EspAt_HasPrompt() != 0U) {
             EspAt_ResetResponse();
-            if (EspAt_SendBytes(packet, packet_length) != HAL_OK) Fail(now);
+            if (EspAt_SendBytes(packet, packet_length) != HAL_OK) Fail(now, "ESP TX FAIL");
             else { phase = SEND; since = now; }
-        } else if ((uint32_t)(now - since) >= 5000U) Fail(now);
+        } else if ((uint32_t)(now - since) >= 5000U) Fail(now, FailureText());
         break;
     case SEND:
         if (response == ESP_AT_RESPONSE_SEND_OK) {
@@ -272,11 +302,11 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
                 if (generation != tx_generation) dirty = 1U;
                 phase = ONLINE;
             }
-        } else if ((uint32_t)(now - since) >= 5000U) Fail(now);
+        } else if ((uint32_t)(now - since) >= 5000U) Fail(now, FailureText());
         break;
     case WAIT_CONNACK:
         if (connack != 0U) { connack = 0U; phase = PREP_SUBSCRIBE; }
-        else if ((uint32_t)(now - since) >= 10000U) Fail(now);
+        else if ((uint32_t)(now - since) >= 10000U) Fail(now, FailureText());
         break;
     case WAIT_SUBACK:
         if (suback != 0U) {
@@ -286,7 +316,7 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
             last_ping = now;
             last_report = now - 1000U;
             phase = ONLINE;
-        } else if ((uint32_t)(now - since) >= 10000U) Fail(now);
+        } else if ((uint32_t)(now - since) >= 10000U) Fail(now, FailureText());
         break;
     case ONLINE:
         if ((uint32_t)(now - last_ping) >= 30000U) {
@@ -299,7 +329,7 @@ void Cloud_Task(uint32_t now, MonitorState *state, const Dht11Sample *sample,
         break;
     case WAIT_PING:
         if (pong != 0U) { pong = 0U; phase = ONLINE; }
-        else if ((uint32_t)(now - since) >= 10000U) Fail(now);
+        else if ((uint32_t)(now - since) >= 10000U) Fail(now, FailureText());
         break;
     default: break;
     }
@@ -319,5 +349,5 @@ uint8_t Cloud_PauseForOta(void)
 
 void Cloud_ResumeAfterOta(uint32_t now)
 {
-    if (phase == OTA_OWNED) Fail(now);
+    if (phase == OTA_OWNED) Fail(now, FailureText());
 }

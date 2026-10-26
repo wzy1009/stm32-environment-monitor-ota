@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-#define MONITOR_PIR_WARMUP_MS 60000U
 #define MONITOR_ARM_DELAY_MS 3000U
 #define MONITOR_MOTION_FILTER_MS 100U
 #define MONITOR_KEY_DEBOUNCE_MS 30U
@@ -15,7 +14,6 @@ typedef struct {
 } MonitorKey;
 
 typedef struct {
-    uint32_t started_at;
     uint32_t armed_at;
     uint32_t motion_changed_at;
     MonitorKey key0;
