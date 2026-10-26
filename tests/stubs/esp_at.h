@@ -2,7 +2,7 @@
 #ifndef ESP_AT_H
 #define ESP_AT_H
 #include <stdint.h>
-typedef enum {HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT} HAL_StatusTypeDef;
+#include "stm32f1xx_hal.h"
 typedef struct {
     uint32_t overflow, uart_errors, rearm_failures, last_uart_error;
 } EspAt_Stats;
@@ -22,4 +22,5 @@ void EspAt_Poll(void);
 void EspAt_GetStats(EspAt_Stats *stats);
 uint8_t EspAt_HasPrompt(void);
 uint8_t EspAt_HasStreamFault(void);
+uint8_t EspAt_StreamIdle(void);
 #endif

@@ -23,3 +23,10 @@
 .env.*
 !.env.example
 **/cloud_private.h
+
+# Local build/cache output
+build/
+__pycache__/
+*.pyc
+**/DebugConfig/
+**/RTE/

@@ -7,12 +7,12 @@
 1. 在巴法云 MQTT 控制台新建 `envState` 和 `envCmd` 两个主题。
 2. 把 `firmware/Core/Inc/cloud_private.h.example` 复制成同目录的 `cloud_private.h`。
 3. 在本地填写 `CLOUD_WIFI_SSID`、`CLOUD_WIFI_PASSWORD`、32 位十六进制用户私钥 `CLOUD_BEMFA_UID`。私钥作为 MQTT Client ID；主题名称可改，但两个主题必须不同，且与控制台一致。本版主题名限 1–40 个字母、数字或下划线。
-4. 在 Keil 的 Options for Target → C/C++ → Define 中追加 `CLOUD_USE_PRIVATE_CONFIG=1`，保留现有宏；不需要把密码写进工程文件。
-5. 按 [硬件说明](hardware.md) 连接 ESP8266/P7 跳线，使用 115200、8N1 和兼容 `_CUR` 指令的 AT 固件，连接 2.4 GHz Wi-Fi。Rebuild 后烧录独立固件 `ENV_CLOUD.hex`。
+4. 使用 `./tools/build.ps1 -KeilRoot <Keil安装目录> -PrivateConfig` 构建，脚本只在编译期间启用 `CLOUD_USE_PRIVATE_CONFIG=1`，之后恢复公开工程。也可在 Keil 的 C/C++ Define 中仅为 `ENV_APP` 加此宏；分享工程时恢复默认配置，不把密码写进工程文件。
+5. 按 [硬件说明](hardware.md) 连接 ESP8266/P7 跳线，使用 115200、8N1 和兼容 `_CUR` 指令的 AT 固件，连接 2.4 GHz Wi-Fi。Rebuild 后烧录独立固件 `ENV_APP.hex`。
 
 `cloud_private.h` 已加入 Git 忽略规则，不能提交个人配置。SSID 最多 32 字节，密码最多 64 字节；本版拒绝双引号、反斜杠和控制字符，避免拼接 AT 指令时破坏命令边界。缺失或非法配置会停在 `NET CONFIG`。
 
-本固件起始地址为 `0x08000000`，会覆盖对应 Flash 内容；它还不是 OTA 升级包。
+当前 APP 起始地址为 `0x08008000`，首次烧录须配套 Boot；OTA 只下发原始 APP BIN。见 [OTA 说明](ota.md)。
 
 ## 看状态
 
@@ -49,6 +49,10 @@
 | `STATUS` | 请求更新状态，仍受上报最小间隔约束 |
 
 只接收完整匹配的命令，不接受额外空格、换行、JSON 或 `on/off`。错误主题、未知命令和保留消息不执行。订阅 QoS 为 0。KEY1 本地撤防始终优先；同一批接收中同时出现布防和撤防时，撤防优先。
+
+JSON 还包含 `version`（当前运行固件版本）和 `ota`（本次应用运行中最近的升级阶段：0 空闲、1 准备、2 擦除暂存、3 下载、4 校验、5 提交、6 失败）。重启后阶段归零，以版本和实际运行情况确认升级结果；本版没有首次启动健康确认。
+
+OTA 下载独占 ESP8266，期间暂停 MQTT；失败且允许恢复时重连，成功安装后由新应用重新联网。升级通知也走 `envCmd/set`，格式见 [OTA 说明](ota.md)。
 
 ## 掉线与报警
 

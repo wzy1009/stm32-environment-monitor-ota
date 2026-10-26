@@ -75,7 +75,7 @@ uint8_t Mqtt_IsPartial(const MqttParser *p)
     return p->header != 0U;
 }
 
-static MqttEvent Decode(const MqttParser *p)
+static MqttEvent Decode(MqttParser *p)
 {
     uint16_t n, body;
     const uint8_t *b = p->data;
@@ -92,6 +92,9 @@ static MqttEvent Decode(const MqttParser *p)
         return MQTT_NONE;
     body = p->remaining - n - 2U;
     b += n + 2U;
+    p->payload_offset = n + 2U;
+    p->payload_length = body;
+    if (body != 0U && b[0] == '{') return MQTT_OTA;
     if (body == 3U && memcmp(b, "ARM", 3U) == 0) return MQTT_ARM;
     if (body == 6U && memcmp(b, "DISARM", 6U) == 0) return MQTT_DISARM;
     if (body == 6U && memcmp(b, "STATUS", 6U) == 0) return MQTT_STATUS;

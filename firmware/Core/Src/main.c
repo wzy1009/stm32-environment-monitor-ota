@@ -5,10 +5,31 @@
 #include "monitor_state.h"
 #include "cloud_task.h"
 #include "usart.h"
+#include "i2c.h"
+#include "spi.h"
+#include "ota_download.h"
+#include "ota_app.h"
+#include "ota_notice.h"
 #include <stdio.h>
 #include <string.h>
 
 static uint8_t display_frame[1024];
+static MonitorState *active_monitor;
+
+void OtaApp_Checkpoint(void)
+{
+    if (active_monitor != NULL) {
+        uint32_t now = HAL_GetTick();
+        Monitor_Update(active_monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
+        BoardIo_SetOutputs(now, active_monitor->alarm, 0U);
+    }
+}
+
+
+uint8_t OtaApp_CanInstall(void)
+{
+    return active_monitor != NULL && active_monitor->armed == 0U;
+}
 
 static void RenderStatus(const MonitorState *state, uint32_t now)
 {
@@ -18,7 +39,7 @@ static void RenderStatus(const MonitorState *state, uint32_t now)
     int temperature;
     uint32_t elapsed;
     memset(display_frame, 0, sizeof(display_frame));
-    Oled_DrawText(display_frame, 0U, 0U, "ENV MONITOR V0.3");
+    Oled_DrawText(display_frame, 0U, 0U, "ENV V" FIRMWARE_VERSION);
     if (sample->valid != 0U) {
         temperature = sample->temperature_x10;
         (void)snprintf(line, sizeof(line), "TEMP %s%d.%d C", temperature < 0 ? "-" : "",
@@ -45,7 +66,16 @@ static void RenderStatus(const MonitorState *state, uint32_t now)
     Oled_DrawText(display_frame, 0U, 5U, state->armed == 0U ? "MODE DISARMED" :
                   Monitor_IsArming(state, now) != 0U ? "MODE ARMING" : "MODE ARMED");
     Oled_DrawText(display_frame, 0U, 6U, state->alarm != 0U ? "ALARM ON" : "ALARM OFF");
-    Oled_DrawText(display_frame, 0U, 7U, Cloud_StatusText());
+    {
+        OtaDownloadProgress progress;
+        OtaDownload_GetProgress(&progress);
+        if (progress.stage != OTA_PROGRESS_IDLE) {
+            static const char * const stages[] = {"IDLE", "PREP", "ERASE", "DOWNLOAD", "VERIFY", "COMMIT", "FAILED"};
+            (void)snprintf(line, sizeof(line), "OTA %s %lu%%", stages[progress.stage],
+                (unsigned long)(progress.total ? progress.done * 100U / progress.total : 0U));
+            Oled_DrawText(display_frame, 0U, 7U, line);
+        } else Oled_DrawText(display_frame, 0U, 7U, OtaNotice_Get() != NULL ? "OTA WAIT DISARM" : Cloud_StatusText());
+    }
 }
 
 void SystemClock_Config(void);
@@ -60,9 +90,13 @@ int main(void)
     HAL_Init();
     SystemClock_Config();
     BoardIo_Init();
+    MX_USART1_UART_Init();
     MX_USART3_UART_Init();
+    MX_I2C1_Init();
+    MX_SPI2_Init();
     now = HAL_GetTick();
     Monitor_Init(&monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
+    active_monitor = &monitor;
     Dht11_Init(now);
     Cloud_Init(now);
     display_retry = now - 2000U;
@@ -70,6 +104,12 @@ int main(void)
         now = HAL_GetTick();
         Monitor_Update(&monitor, now, BoardIo_Key0Down(), BoardIo_Key1Down(), BoardIo_Motion());
         Cloud_Task(now, &monitor, Dht11_GetSample(), Dht11_GetStatus(), Dht11_IsBusy() == 0U);
+        if (Dht11_IsBusy() == 0U) {
+            /* New upgrades wait for local disarm; an active transfer owns the modem. */
+            if (monitor.armed == 0U || OtaDownload_IsBusy() != 0U) OtaDownload_Task();
+            if (OtaDownload_NeedsRecovery() && OtaDownload_ResetForRetry())
+                Cloud_ResumeAfterOta(HAL_GetTick());
+        }
         /* Network work may take time; start the DHT window using a fresh tick. */
         Dht11_Task(HAL_GetTick());
         now = HAL_GetTick();
@@ -90,45 +130,4 @@ int main(void)
             if (Oled_FlushStep() != HAL_OK) display_ok = 0U;
         }
     }
-}
-
-void SystemClock_Config(void)
-{
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-}
-
-void Error_Handler(void)
-{
-    __disable_irq();
-    while (1) {}
 }

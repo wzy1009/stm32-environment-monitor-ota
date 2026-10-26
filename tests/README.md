@@ -1,16 +1,21 @@
 # 本机测试
 
-共 10 组，使用 Windows Tiny C Compiler。已有 TCC 时在仓库根目录运行：
+使用 Python 3 和 Windows Tiny C Compiler，在仓库根目录运行：
 
 ```powershell
-tcc -Wall -Werror -Ifirmware/Core/Inc tests/test_local_monitor.c firmware/Core/Src/monitor_state.c firmware/Core/Src/dht11.c -o local-monitor-tests.exe
-./local-monitor-tests.exe
-tcc -Wall -Werror -Itests/stubs -Ifirmware/Core/Inc tests/test_cloud.c firmware/Core/Src/cloud_task.c firmware/Core/Src/cloud_mqtt.c firmware/Core/Src/esp_stream.c firmware/Core/Src/monitor_state.c -o cloud-tests.exe
-./cloud-tests.exe
+python tests/run_tests.py --tcc <tcc.exe的路径>
 ```
 
-- `test_local_monitor.c`：8 组，测试生产状态机与 DHT11 驱动，以虚拟电平和周期计数代替 GPIO。
-- `test_cloud.c`：2 组，测试生产 MQTT 编解码、IPD 拆帧和云端状态机；模拟 AT/UART 与服务器应答。
-- `stubs`：仅用于本机测试，包含固定的虚假凭据与 AT 接口替身；不加入 Keil 工程。
+| 文件 | 检查内容 |
+|---|---|
+| `test_local_monitor.c` | DHT11 数据与虚拟波形、断线恢复、按键消抖、预热、布防与报警 |
+| `test_cloud.c` | MQTT/IPD、非法配置、远程命令、KEY1 优先、超时重连和 OTA 接收权限与网络交接 |
+| `test_ota.c` | 通知与 HTTP 校验、正确下载、错误 MD5/长度/向量、旧 pending、EEPROM 异常、提交结果不明确、计时回绕、布防取消和串口丢字节 |
+| `test_boot.c` | 运行真实安装器和 Flash 边界检查；正常安装、奇数尾字节、坏暂存/记录/向量、擦写失败、读回损坏、清 pending 失败和重试 |
+| `test_package.py` | BIN 版本/向量/URL、初始 HEX 校验与合并、错误地址和校验和拒绝 |
 
-测试覆盖与边界见 [验证记录](../docs/validation.md)。软件模拟不能替代实板接线、供电、串口/DHT11 并发时序或真实云端验证。
+`stubs` 和 `ota_stubs` 只替代外设边界、AT 与服务器应答，测试使用固定虚假凭据，不加入 Keil 固件。Boot 测试用 Windows 虚拟内存模拟内部 Flash，保留实际地址边界检查；它不是实板擦写或真实断电试验。
+
+测试临时文件位于被 Git 忽略的 `build` 下。运行器会给本机编译副本移除 UTF-8 BOM；ARMCC 使用的源文件编码保持原样。只重跑升级部分可加 `--ota-only`。
+
+软件验证不能替代供电、接线、外设时序、真实网络和安装断电验收，具体范围见 [验证记录](../docs/validation.md)。

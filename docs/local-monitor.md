@@ -1,6 +1,6 @@
 # 本地监测与报警
 
-当前固件 V0.3。本地监测代码已编译并通过本机测试，以下步骤待实板执行；云端配置另见 [云端接入](cloud.md)。
+当前固件 V0.4.0。本地监测代码已编译并通过本机测试，以下步骤待实板执行；云端配置另见 [云端接入](cloud.md)。
 
 ## 接线与烧录
 
@@ -8,9 +8,9 @@
 2. SR602：OUT→PG10（P10-22），GND→开发板 GND；确认模块支持 3.3 V 供电后再连接 VCC。
 3. OLED：SCL→PD9、SDA→PE15，电源 3.3 V，并共地。
 4. KEY0、KEY1、蜂鸣器和 LED 使用板载器件。
-5. 打开 `firmware/MDK-ARM/ENV_BASE.uvprojx`，选择 `ENV_BASE` 并 Rebuild，生成 `Objects/ENV_CLOUD.hex`。
+5. 打开 `firmware/MDK-ARM/ENV_BASE.uvprojx`，选择 `ENV_APP` 并 Rebuild，生成 `Objects/APP/ENV_APP.hex`，首次烧录须配套 `ENV_BOOT`。
 
-程序从 `0x08000000` 运行，烧录会覆盖对应位置固件，先备份需要保留的内容。此 HEX 不能直接作为 OTA 升级包。
+当前 APP 从 `0x08008000` 运行，Boot 从 `0x08000000` 运行；首次烧录前备份需要保留的程序与数据。HEX 用于初始烧录，OTA 使用原始 APP BIN。
 
 ## 显示与操作
 

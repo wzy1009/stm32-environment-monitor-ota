@@ -16,6 +16,11 @@ void BoardIo_Init(void)
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
     HAL_GPIO_WritePin(GPIOB, BEEP_PIN, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, FLASH_CS_Pin, GPIO_PIN_SET);
+    gpio.Pin = FLASH_CS_Pin;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &gpio);
     gpio.Pin = GPIO_PIN_5 | BEEP_PIN;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;

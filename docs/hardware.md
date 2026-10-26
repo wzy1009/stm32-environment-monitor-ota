@@ -14,10 +14,10 @@
 | OLED SCL / SDA | PD9 / PE15 | P1-20 / P1-18，软件 I²C，需有上拉 |
 | OLED VCC / GND | P1-24 / P1-22 | 3.3 V / GND |
 | SWD | PA13 / PA14 | 调试下载 |
-| USART1 | PA9 TX / PA10 RX | 下载接口，本版无串口业务 |
+| USART1 | PA9 TX / PA10 RX | 115200、8N1，下载进度与故障日志；协议使用 USART3 |
 | ESP8266 | USART3，PB10 TX / PB11 RX | 115200、8N1；接板载 P2 时，P7 跳线接 3–5、4–6 |
-| SPI Flash | PB12 CS、PB13 SCK、PB14 MISO、PB15 MOSI | 预留 |
-| AT24C02 | PB6 SCL、PB7 SDA | 预留 |
+| SPI Flash | PB12 CS、PB13 SCK、PB14 MISO、PB15 MOSI | SPI2，暂存升级 BIN；16 MiB 器件 |
+| AT24C02 | PB6 SCL、PB7 SDA | I²C1，保存升级记录与提交标志 |
 
 P13 是四脚 DHT11/DS18B20 共用接口。三脚 DHT11 模块按 VCC、DATA、GND 接线，不按位置直接插入；不要同时连接 DS18B20。
 
